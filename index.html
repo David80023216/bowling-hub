@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bowling Hub — Your Bowling Companion</title>
+  <meta name="description" content="Track scores, leagues, honor rolls, and challenges. Your all-in-one bowling companion app." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎳</text></svg>" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bowl: {
+              navy: '#0f172a',
+              dark: '#1e293b',
+              card: '#1e293b',
+              border: '#334155',
+              red: '#ef4444',
+              amber: '#f59e0b',
+              green: '#22c55e',
+              pin: '#f8fafc',
+              muted: '#94a3b8',
+              surface: '#0f172a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    /* Transitions */
+    .view-container { animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Glow effects */
+    .glow-red { box-shadow: 0 0 15px rgba(239,68,68,0.3); }
+    .glow-amber { box-shadow: 0 0 15px rgba(245,158,11,0.3); }
+    .glow-green { box-shadow: 0 0 15px rgba(34,197,94,0.3); }
+
+    /* Rainbow text for 300 */
+    .rainbow-text {
+      background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6, #ef4444);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: rainbow 3s linear infinite;
+    }
+    @keyframes rainbow { to { background-position: 200% center; } }
+
+    /* Toast */
+    .toast { animation: slideUp 0.3s ease, fadeOut 0.3s ease 2.7s; }
+    @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes fadeOut { to { opacity: 0; } }
+
+    /* Modal backdrop */
+    .modal-backdrop { animation: fadeInBg 0.2s ease; }
+    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Nav active indicator */
+    .nav-item.active { color: #ef4444; }
+    .nav-item.active .nav-indicator { width: 100%; }
+    .nav-indicator { transition: width 0.2s ease; }
+
+    /* Score highlight */
+    .score-perfect { background: linear-gradient(135deg, #fbbf24, #f59e0b, #d97706); }
+    .score-high { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+
+    /* Spinner */
+    .spinner { border: 3px solid #334155; border-top-color: #ef4444; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Light theme overrides */
+    html:not(.dark) body { background: #f1f5f9; color: #0f172a; }
+    html:not(.dark) .bg-bowl-navy { background: #f1f5f9; }
+    html:not(.dark) .bg-bowl-dark, html:not(.dark) .bg-bowl-card { background: #ffffff; }
+    html:not(.dark) .border-bowl-border { border-color: #e2e8f0; }
+    html:not(.dark) .text-bowl-pin { color: #0f172a; }
+    html:not(.dark) .text-bowl-muted { color: #64748b; }
+    html:not(.dark) .text-white { color: #0f172a; }
+    html:not(.dark) .text-gray-400 { color: #64748b; }
+    html:not(.dark) .text-gray-300 { color: #475569; }
+    html:not(.dark) .text-gray-500 { color: #64748b; }
+
+    /* Bowling pin animation for welcome */
+    .pin-bounce { animation: pinBounce 1s ease infinite alternate; }
+    @keyframes pinBounce { 0% { transform: translateY(0); } 100% { transform: translateY(-12px); } }
+    .pin-bounce-delay { animation-delay: 0.2s; }
+    .pin-bounce-delay2 { animation-delay: 0.4s; }
+  </style>
+</head>
+<body class="bg-bowl-navy text-white min-h-screen">
+
+  <!-- App Shell -->
+  <div id="app" class="flex flex-col md:flex-row min-h-screen">
+
+    <!-- Sidebar (Desktop) -->
+    <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-bowl-dark border-r border-bowl-border fixed h-full z-30">
+      <div class="p-6 border-b border-bowl-border">
+        <h1 class="text-2xl font-bold flex items-center gap-2">
+          🎳 <span class="text-bowl-red">Bowling</span> Hub
+        </h1>
+        <p class="text-bowl-muted text-sm mt-1">Your Bowling Companion</p>
+      </div>
+      <nav class="flex-1 p-4 space-y-1" id="sidebar-nav">
+        <a href="#dashboard" class="nav-item sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="dashboard">
+          <i class="fa-solid fa-gauge w-5 text-center"></i> Dashboard
+        </a>
+        <a href="#scores" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="scores">
+          <i class="fa-solid fa-list-ol w-5 text-center"></i> My Scores
+        </a>
+        <a href="#honors" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="honors">
+          <i class="fa-solid fa-trophy w-5 text-center"></i> Honor Scores
+        </a>
+        <a href="#leagues" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="leagues">
+          <i class="fa-solid fa-users w-5 text-center"></i> My Leagues
+        </a>
+        <a href="#schedule" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="schedule">
+          <i class="fa-solid fa-calendar-days w-5 text-center"></i> Schedule
+        </a>
+        <a href="#challenges" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="challenges">
+          <i class="fa-solid fa-bolt w-5 text-center"></i> Challenges
+        </a>
+        <a href="#settings" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="settings">
+          <i class="fa-solid fa-gear w-5 text-center"></i> Settings
+        </a>
+      </nav>
+      <div class="p-4 border-t border-bowl-border">
+        <div id="sidebar-profile" class="flex items-center gap-3 px-2">
+          <div class="w-9 h-9 rounded-full bg-bowl-red flex items-center justify-center font-bold text-sm">?</div>
+          <div>
+            <p class="text-sm font-medium" id="sidebar-name">Not Set Up</p>
+            <p class="text-xs text-bowl-muted" id="sidebar-usbc">USBC: —</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main-content" class="flex-1 md:ml-64 pb-20 md:pb-0">
+      <!-- Top bar mobile -->
+      <header class="md:hidden sticky top-0 z-20 bg-bowl-dark/95 backdrop-blur border-b border-bowl-border px-4 py-3 flex items-center justify-between">
+        <h1 class="text-lg font-bold flex items-center gap-2">🎳 <span class="text-bowl-red">Bowling</span> Hub</h1>
+        <div id="header-avatar" class="w-8 h-8 rounded-full bg-bowl-red flex items-center justify-center font-bold text-xs cursor-pointer" data-view="settings">?</div>
+      </header>
+
+      <!-- View Container -->
+      <div id="view-container" class="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto">
+        <!-- Views are rendered here by JS -->
+      </div>
+    </main>
+
+    <!-- Bottom Nav (Mobile) -->
+    <nav id="bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-bowl-dark/95 backdrop-blur border-t border-bowl-border z-30">
+      <div class="flex justify-around items-center py-2">
+        <a href="#dashboard" class="nav-item bottom-link active flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="dashboard">
+          <i class="fa-solid fa-gauge text-lg"></i>
+          <span>Home</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+        <a href="#scores" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="scores">
+          <i class="fa-solid fa-list-ol text-lg"></i>
+          <span>Scores</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+        <a href="#honors" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="honors">
+          <i class="fa-solid fa-trophy text-lg"></i>
+          <span>Honors</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+        <a href="#leagues" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="leagues">
+          <i class="fa-solid fa-users text-lg"></i>
+          <span>Leagues</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+        <a href="#schedule" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="schedule">
+          <i class="fa-solid fa-calendar-days text-lg"></i>
+          <span>Schedule</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+        <a href="#challenges" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="challenges">
+          <i class="fa-solid fa-bolt text-lg"></i>
+          <span>Challenges</span>
+          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
+        </a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- Modal Container -->
+  <div id="modal-container" class="hidden fixed inset-0 z-50"></div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed bottom-24 md:bottom-6 right-4 z-50 flex flex-col gap-2"></div>
+
+  <!-- Load App -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "leagues": [
+    {
+      "id": "sample-monday",
+      "name": "Monday Night Mixed",
+      "center": "Sunset Lanes",
+      "day": "Monday",
+      "time": "18:30",
+      "lssId": "12345",
+      "totalWeeks": 36
+    },
+    {
+      "id": "sample-wednesday",
+      "name": "Wednesday Scratch League",
+      "center": "Thunderbowl Lanes",
+      "day": "Wednesday",
+      "time": "19:00",
+      "lssId": "67890",
+      "totalWeeks": 32
+    }
+  ],
+  "sampleStandings": {
+    "12345": [
+      { "rank": 1, "teamName": "Pin Crushers", "wins": 45, "losses": 19, "points": 60, "teamAvg": 892, "handicap": 120 },
+      { "rank": 2, "teamName": "Split Happens", "wins": 42, "losses": 22, "points": 55, "teamAvg": 875, "handicap": 135 },
+      { "rank": 3, "teamName": "Gutter Done", "wins": 39, "losses": 25, "points": 51, "teamAvg": 860, "handicap": 150 },
+      { "rank": 4, "teamName": "Bowl Movements", "wins": 36, "losses": 28, "points": 47, "teamAvg": 845, "handicap": 165 },
+      { "rank": 5, "teamName": "The Pinheads", "wins": 33, "losses": 31, "points": 43, "teamAvg": 830, "handicap": 180 },
+      { "rank": 6, "teamName": "Alley Cats", "wins": 30, "losses": 34, "points": 39, "teamAvg": 815, "handicap": 195 },
+      { "rank": 7, "teamName": "Spare Me", "wins": 27, "losses": 37, "points": 35, "teamAvg": 800, "handicap": 210 },
+      { "rank": 8, "teamName": "Lucky Strikes", "wins": 24, "losses": 40, "points": 31, "teamAvg": 785, "handicap": 225 }
+    ]
+  }
+}
