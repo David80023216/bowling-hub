@@ -1,158 +1,150 @@
-/**
- * dashboard.js — Dashboard view for Bowling Hub
- */
+/* Dashboard module */
 
-import * as Storage from './storage.js';
-import { navigateTo, statCard, scoreClass, formatDate } from './app.js';
+const Dashboard = (() => {
+  let loaded = false;
 
-export function renderDashboard(container) {
-  const profile = Storage.getProfile();
-  const stats = Storage.getScoreStats();
-  const scores = Storage.getScores();
-  const honors = Storage.getHonors();
-  const schedule = Storage.getSchedule();
-  const challenges = Storage.getChallenges();
-  const leagues = Storage.getLeagues();
+  async function load() {
+    const container = document.getElementById('tab-dashboard');
+    if (!loaded) {
+      container.innerHTML = skeletonHTML();
+    }
 
-  // Recent 5 scores
-  const recentScores = scores.slice(0, 5);
+    const user = Auth.getUser();
+    const profile = Auth.getProfile();
+    if (!user) return;
 
-  // Next upcoming match
-  const today = new Date().toISOString().split('T')[0];
-  const nextMatch = schedule.find(m => m.date >= today);
+    try {
+      const [scoresRes, honorsRes, challengesRes, schedulesRes] = await Promise.all([
+        sb.from('scores').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(50),
+        sb.from('honors').select('*').eq('user_id', user.id),
+        sb.from('challenges').select('*, challenger:profiles!challenges_challenger_id_fkey(full_name), opponent:profiles!challenges_opponent_id_fkey(full_name)').or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`).eq('status', 'active').limit(5),
+        sb.from('schedules').select('*, league:leagues(name)').eq('user_id', user.id).gte('match_date', new Date().toISOString().slice(0, 10)).order('match_date', { ascending: true }).limit(5)
+      ]);
 
-  // Active challenges
-  const activeChallenges = challenges.filter(c => c.status === 'Active' || c.status === 'Pending');
+      const scores = scoresRes.data || [];
+      const honors = honorsRes.data || [];
+      const challenges = challengesRes.data || [];
+      const upcoming = schedulesRes.data || [];
 
-  // Greeting based on time of day
-  const hour = new Date().getHours();
-  let greeting = 'Good evening';
-  if (hour < 12) greeting = 'Good morning';
-  else if (hour < 17) greeting = 'Good afternoon';
+      // Compute stats
+      const allGames = [];
+      scores.forEach(s => {
+        if (s.games && Array.isArray(s.games)) {
+          s.games.forEach(g => allGames.push(Number(g)));
+        }
+      });
 
-  container.innerHTML = `
-    <!-- Greeting -->
-    <div class="mb-6">
-      <h2 class="text-2xl md:text-3xl font-bold">${greeting}, ${profile.name}! 🎳</h2>
-      <p class="text-bowl-muted mt-1">Ready to knock 'em down?</p>
-    </div>
+      const totalGames = allGames.length;
+      const avg = totalGames > 0 ? Math.round(allGames.reduce((a, b) => a + b, 0) / totalGames) : 0;
+      const highGame = totalGames > 0 ? Math.max(...allGames) : 0;
 
-    <!-- Stat Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-      ${statCard('🎯', 'Average', stats.currentAvg || '—', 'text-bowl-amber')}
-      ${statCard('🔥', 'High Game', stats.highGame || '—', 'text-bowl-red')}
-      ${statCard('📊', 'High Series', stats.highSeries || '—', 'text-blue-400')}
-      ${statCard('🎮', 'Total Games', stats.totalGames, 'text-bowl-green')}
-      ${statCard('🏆', 'Honors', honors.length, 'text-yellow-400')}
-    </div>
+      // High series (best 3-game set from a single session)
+      let highSeries = 0;
+      scores.forEach(s => {
+        if (s.games && s.games.length >= 3) {
+          const total = s.games.slice(0, 3).reduce((a, b) => a + Number(b), 0);
+          if (total > highSeries) highSeries = total;
+        }
+      });
 
-    <!-- Quick Actions -->
-    <div class="flex flex-wrap gap-3 mb-6">
-      <button id="quick-log-scores" class="bg-bowl-red hover:bg-red-600 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2">
-        <i class="fa-solid fa-plus"></i> Log Scores
-      </button>
-      <button id="quick-view-leagues" class="bg-bowl-border hover:bg-gray-600 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2">
-        <i class="fa-solid fa-users"></i> View Leagues
-      </button>
-    </div>
+      const recentScores = scores.slice(0, 5);
 
-    <div class="grid md:grid-cols-2 gap-6">
-
-      <!-- Recent Scores -->
-      <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-lg flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-bowl-muted"></i> Recent Scores</h3>
-          <button class="text-sm text-bowl-red hover:underline" id="dash-view-all-scores">View All</button>
-        </div>
-        ${recentScores.length === 0 ? `
-          <div class="text-center py-8 text-bowl-muted">
-            <i class="fa-solid fa-bowling-ball text-3xl mb-2"></i>
-            <p>No scores yet. Start logging!</p>
-          </div>
-        ` : `
-          <div class="space-y-2">
-            ${recentScores.map(s => {
-              const leagueName = s.leagueId ? (leagues.find(l => l.id === s.leagueId)?.name || 'League') : (s.leagueName || 'Practice');
-              return `
-                <div class="flex items-center justify-between py-2 border-b border-bowl-border/50 last:border-0">
-                  <div>
-                    <p class="text-sm font-medium">${leagueName}</p>
-                    <p class="text-xs text-bowl-muted">${formatDate(s.date)}</p>
-                  </div>
-                  <div class="text-right">
-                    <p class="font-mono text-sm">
-                      ${(s.games || []).map(g => `<span class="${scoreClass(g)}">${g}</span>`).join(' · ')}
-                    </p>
-                    <p class="text-xs text-bowl-muted">Series: ${s.series} | Avg: ${s.avg}</p>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </div>
-
-      <!-- Right Column -->
-      <div class="space-y-6">
-
-        <!-- Next Match -->
-        <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5">
-          <h3 class="font-bold text-lg flex items-center gap-2 mb-4"><i class="fa-solid fa-calendar-check text-bowl-amber"></i> Next Match</h3>
-          ${nextMatch ? (() => {
-            const league = leagues.find(l => l.id === nextMatch.leagueId);
-            return `
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="font-medium">${league ? league.name : 'Match'}</p>
-                  <p class="text-sm text-bowl-muted">vs ${nextMatch.opponent || 'TBD'}</p>
-                  <p class="text-xs text-bowl-muted mt-1">${formatDate(nextMatch.date)} ${nextMatch.time ? '@ ' + nextMatch.time : ''}</p>
-                </div>
-                <div class="text-right">
-                  ${nextMatch.lanes ? `<p class="text-sm">Lanes <span class="font-bold text-bowl-amber">${nextMatch.lanes}</span></p>` : ''}
-                  ${nextMatch.weekNumber ? `<p class="text-xs text-bowl-muted">Week ${nextMatch.weekNumber}</p>` : ''}
-                </div>
-              </div>
-            `;
-          })() : `
-            <div class="text-center py-4 text-bowl-muted">
-              <i class="fa-solid fa-calendar-xmark text-2xl mb-2"></i>
-              <p class="text-sm">No upcoming matches</p>
-            </div>
-          `}
+      container.innerHTML = `
+        <div class="page-header">
+          <h1>Welcome back, ${escHtml(profile?.full_name || 'Bowler')}! 🎳</h1>
+          <p class="subtitle">Here's your bowling snapshot</p>
         </div>
 
-        <!-- Active Challenges -->
-        <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-lg flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-400"></i> Challenges</h3>
-            <button class="text-sm text-bowl-red hover:underline" id="dash-view-challenges">View All</button>
+        <div class="stat-cards">
+          <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-value">${avg}</div>
+            <div class="stat-label">Current Average</div>
           </div>
-          ${activeChallenges.length === 0 ? `
-            <div class="text-center py-4 text-bowl-muted">
-              <p class="text-sm">No active challenges</p>
-            </div>
-          ` : `
-            <div class="space-y-2">
-              ${activeChallenges.slice(0, 3).map(c => `
-                <div class="flex items-center justify-between py-2 border-b border-bowl-border/50 last:border-0">
-                  <div>
-                    <p class="text-sm font-medium">vs ${c.opponentName}</p>
-                    <p class="text-xs text-bowl-muted">${c.type}</p>
-                  </div>
-                  <span class="text-xs px-2 py-0.5 rounded-full ${c.status === 'Active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">${c.status}</span>
-                </div>
-              `).join('')}
-            </div>
-          `}
+          <div class="stat-card accent">
+            <div class="stat-icon">🎯</div>
+            <div class="stat-value">${highGame}</div>
+            <div class="stat-label">High Game</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🔥</div>
+            <div class="stat-value">${highSeries}</div>
+            <div class="stat-label">High Series</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value">${honors.length}</div>
+            <div class="stat-label">Honor Count</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🎳</div>
+            <div class="stat-value">${totalGames}</div>
+            <div class="stat-label">Games Bowled</div>
+          </div>
         </div>
 
-      </div>
-    </div>
-  `;
+        <div class="grid-2">
+          <div class="card">
+            <h3>📋 Recent Scores</h3>
+            ${recentScores.length === 0 ? '<p class="empty-state">No scores yet. Head to My Scores to log your first session!</p>' :
+              `<table class="data-table">
+                <thead><tr><th>Date</th><th>League</th><th>Games</th><th>Series</th><th>Avg</th></tr></thead>
+                <tbody>${recentScores.map(s => {
+                  const games = s.games || [];
+                  const series = games.reduce((a, b) => a + Number(b), 0);
+                  const sAvg = games.length > 0 ? Math.round(series / games.length) : 0;
+                  return `<tr>
+                    <td>${formatDate(s.date)}</td>
+                    <td>${escHtml(s.league_name || 'Practice')}</td>
+                    <td>${games.join(', ')}</td>
+                    <td class="${series >= 700 ? 'honor-text' : ''}">${series}</td>
+                    <td>${sAvg}</td>
+                  </tr>`;
+                }).join('')}</tbody>
+              </table>`}
+          </div>
 
-  // Event handlers
-  document.getElementById('quick-log-scores')?.addEventListener('click', () => navigateTo('scores'));
-  document.getElementById('quick-view-leagues')?.addEventListener('click', () => navigateTo('leagues'));
-  document.getElementById('dash-view-all-scores')?.addEventListener('click', () => navigateTo('scores'));
-  document.getElementById('dash-view-challenges')?.addEventListener('click', () => navigateTo('challenges'));
-}
+          <div class="card">
+            <h3>📅 Upcoming Matches</h3>
+            ${upcoming.length === 0 ? '<p class="empty-state">No upcoming matches scheduled.</p>' :
+              `<div class="upcoming-list">${upcoming.map(m => `
+                <div class="upcoming-item">
+                  <div class="upcoming-date">${formatDate(m.match_date)}</div>
+                  <div class="upcoming-details">
+                    <strong>${escHtml(m.league?.name || 'League')}</strong>
+                    <span>vs ${escHtml(m.opponent || 'TBD')} ${m.lanes ? '• Lanes ' + escHtml(m.lanes) : ''}</span>
+                  </div>
+                </div>
+              `).join('')}</div>`}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>⚔️ Active Challenges</h3>
+          ${challenges.length === 0 ? '<p class="empty-state">No active challenges. Create one from the Challenges tab!</p>' :
+            `<div class="challenge-list">${challenges.map(c => {
+              const isChallenger = c.challenger_id === user.id;
+              const opponentName = isChallenger ? c.opponent?.full_name : c.challenger?.full_name;
+              return `<div class="challenge-item">
+                <span class="challenge-type">${escHtml(c.challenge_type || 'Challenge')}</span>
+                <span>vs ${escHtml(opponentName || 'Unknown')}</span>
+                <span class="challenge-wager">${escHtml(c.wager_description || '')}</span>
+              </div>`;
+            }).join('')}</div>`}
+        </div>
+      `;
+      loaded = true;
+    } catch (err) {
+      console.error('Dashboard load error:', err);
+      Toast.show('Error loading dashboard', 'error');
+    }
+  }
+
+  function skeletonHTML() {
+    return `<div class="page-header"><div class="skeleton skeleton-title"></div></div>
+      <div class="stat-cards">${'<div class="stat-card"><div class="skeleton skeleton-stat"></div></div>'.repeat(5)}</div>
+      <div class="grid-2"><div class="card"><div class="skeleton skeleton-block"></div></div><div class="card"><div class="skeleton skeleton-block"></div></div></div>`;
+  }
+
+  return { load };
+})();

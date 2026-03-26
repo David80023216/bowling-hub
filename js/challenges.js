@@ -1,306 +1,287 @@
-/**
- * challenges.js — Challenges view for Bowling Hub
- */
+/* Challenges module – create, accept, track bowling challenges */
 
-import * as Storage from './storage.js';
-import { showModal, closeModal, showToast, formatDate, formField, inputClass, selectClass, btnPrimary } from './app.js';
+const Challenges = (() => {
+  const TYPES = [
+    { key: 'high_series', label: 'High Series', desc: 'Highest 3-game series wins' },
+    { key: 'high_game', label: 'High Game', desc: 'Highest single game wins' },
+    { key: 'head_to_head', label: 'Head to Head', desc: 'Bowl against each other directly' },
+    { key: 'pins_over_avg', label: 'Pins Over Average', desc: 'Most pins over your average wins' },
+    { key: 'total_pins', label: 'Total Pins', desc: 'Highest total pins in date range wins' },
+  ];
 
-const CHALLENGE_TYPES = ['Highest Series', 'Head-to-Head', 'Pins Over Average', 'High Game'];
-const STATUS_COLORS = {
-  'Pending': 'bg-yellow-500/20 text-yellow-400',
-  'Active': 'bg-green-500/20 text-green-400',
-  'Completed': 'bg-blue-500/20 text-blue-400',
-  'Declined': 'bg-red-500/20 text-red-400',
-};
+  async function load() {
+    const container = document.getElementById('tab-challenges');
+    const user = Auth.getUser();
+    if (!user) return;
 
-export function renderChallenges(container) {
-  const challenges = Storage.getChallenges();
-  const contacts = Storage.getContacts();
+    container.innerHTML = '<div class="card"><div class="skeleton skeleton-block"></div></div>';
 
-  // Stats
-  const completed = challenges.filter(c => c.status === 'Completed');
-  const wins = completed.filter(c => c.winner === 'me').length;
-  const losses = completed.filter(c => c.winner === 'them').length;
-  const draws = completed.filter(c => c.winner === 'draw').length;
+    try {
+      const { data, error } = await sb.from('challenges')
+        .select('*, challenger:profiles!challenges_challenger_id_fkey(full_name), opponent:profiles!challenges_opponent_id_fkey(full_name)')
+        .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
 
-  // Group
-  const pending = challenges.filter(c => c.status === 'Pending');
-  const active = challenges.filter(c => c.status === 'Active');
-  const history = challenges.filter(c => c.status === 'Completed' || c.status === 'Declined');
+      if (error) throw error;
+      const all = data || [];
 
-  container.innerHTML = `
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-400"></i> Challenges</h2>
-        <p class="text-bowl-muted text-sm">Create and track head-to-head challenges</p>
+      const pending = all.filter(c => c.status === 'pending' && c.opponent_id === user.id);
+      const active = all.filter(c => c.status === 'active');
+      const myPending = all.filter(c => c.status === 'pending' && c.challenger_id === user.id);
+      const completed = all.filter(c => c.status === 'completed' || c.status === 'declined');
+
+      render(container, pending, active, myPending, completed, user);
+    } catch (err) {
+      console.error('Challenges load error:', err);
+      Toast.show('Error loading challenges', 'error');
+    }
+  }
+
+  function render(container, pending, active, myPending, completed, user) {
+    container.innerHTML = `
+      <div class="page-header">
+        <h1>⚔️ Challenges</h1>
+        <button class="btn btn-primary" onclick="Challenges.showCreateForm()">+ New Challenge</button>
       </div>
-      ${btnPrimary('New Challenge', 'btn-new-challenge', 'fa-plus')}
-    </div>
 
-    <!-- Win/Loss Record -->
-    <div class="grid grid-cols-3 gap-3 mb-6">
-      <div class="bg-bowl-dark border border-bowl-border rounded-xl p-4 text-center">
-        <p class="text-3xl font-bold text-bowl-green">${wins}</p>
-        <p class="text-xs text-bowl-muted">Wins</p>
-      </div>
-      <div class="bg-bowl-dark border border-bowl-border rounded-xl p-4 text-center">
-        <p class="text-3xl font-bold text-bowl-red">${losses}</p>
-        <p class="text-xs text-bowl-muted">Losses</p>
-      </div>
-      <div class="bg-bowl-dark border border-bowl-border rounded-xl p-4 text-center">
-        <p class="text-3xl font-bold text-gray-400">${draws}</p>
-        <p class="text-xs text-bowl-muted">Draws</p>
-      </div>
-    </div>
-
-    ${pending.length > 0 ? `
-      <div class="mb-6">
-        <h3 class="font-bold text-yellow-400 mb-3 flex items-center gap-2"><i class="fa-solid fa-hourglass-half"></i> Pending</h3>
-        <div class="space-y-3">${pending.map(c => renderChallengeCard(c)).join('')}</div>
-      </div>
-    ` : ''}
-
-    ${active.length > 0 ? `
-      <div class="mb-6">
-        <h3 class="font-bold text-bowl-green mb-3 flex items-center gap-2"><i class="fa-solid fa-fire"></i> Active</h3>
-        <div class="space-y-3">${active.map(c => renderChallengeCard(c)).join('')}</div>
-      </div>
-    ` : ''}
-
-    ${pending.length === 0 && active.length === 0 ? `
-      <div class="text-center py-12 text-bowl-muted mb-6">
-        <i class="fa-solid fa-bolt text-5xl mb-4 opacity-50"></i>
-        <p class="text-lg">No active challenges</p>
-        <p class="text-sm">Challenge a friend to a bowling showdown!</p>
-      </div>
-    ` : ''}
-
-    ${history.length > 0 ? `
-      <div>
-        <h3 class="font-bold text-bowl-muted mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> History</h3>
-        <div class="space-y-3">${history.map(c => renderChallengeCard(c)).join('')}</div>
-      </div>
-    ` : ''}
-
-    <!-- Disclaimer -->
-    <div class="mt-8 p-4 bg-bowl-dark border border-bowl-border rounded-xl text-xs text-bowl-muted">
-      <p><i class="fa-solid fa-info-circle text-bowl-amber mr-1"></i> <strong>Disclaimer:</strong> Challenges are for fun and friendly competition. Please wager responsibly and in accordance with local laws. Bowling Hub does not facilitate or process any financial transactions.</p>
-    </div>
-  `;
-
-  // New challenge handler
-  document.getElementById('btn-new-challenge').addEventListener('click', () => openNewChallengeModal(contacts));
-
-  // Action handlers
-  document.querySelectorAll('.btn-accept-challenge').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ch = challenges.find(c => c.id === btn.dataset.id);
-      if (ch) {
-        ch.status = 'Active';
-        Storage.saveChallenge(ch);
-        showToast('Challenge accepted! 🎳', 'success');
-        renderChallenges(container);
-      }
-    });
-  });
-
-  document.querySelectorAll('.btn-decline-challenge').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ch = challenges.find(c => c.id === btn.dataset.id);
-      if (ch) {
-        ch.status = 'Declined';
-        Storage.saveChallenge(ch);
-        showToast('Challenge declined', 'info');
-        renderChallenges(container);
-      }
-    });
-  });
-
-  document.querySelectorAll('.btn-record-result').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ch = challenges.find(c => c.id === btn.dataset.id);
-      if (ch) openRecordResultModal(ch, container);
-    });
-  });
-
-  document.querySelectorAll('.btn-delete-challenge').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (confirm('Delete this challenge?')) {
-        Storage.deleteChallenge(btn.dataset.id);
-        showToast('Challenge deleted', 'info');
-        renderChallenges(container);
-      }
-    });
-  });
-}
-
-function renderChallengeCard(c) {
-  const statusClass = STATUS_COLORS[c.status] || 'bg-gray-500/20 text-gray-400';
-  const isCompleted = c.status === 'Completed';
-  const winnerLabel = c.winner === 'me' ? '🏆 You Won!' : c.winner === 'them' ? '😤 You Lost' : c.winner === 'draw' ? '🤝 Draw' : '';
-
-  return `
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-4">
-      <div class="flex items-start justify-between mb-2">
-        <div>
-          <p class="font-bold flex items-center gap-2">
-            ⚡ vs ${c.opponentName}
-            <span class="text-xs px-2 py-0.5 rounded-full ${statusClass}">${c.status}</span>
-          </p>
-          <p class="text-sm text-bowl-muted">${c.type} — ${c.stakes || 'Bragging rights'}</p>
+      <div id="challenge-create-form" class="card form-card" style="display:none;">
+        <h3>Create Challenge</h3>
+        <div class="form-group">
+          <label>Search Opponent</label>
+          <input type="text" id="challenge-search" placeholder="Search by name..." oninput="Challenges.searchOpponents()">
+          <div id="challenge-search-results" class="search-results"></div>
+          <input type="hidden" id="challenge-opponent-id">
+          <div id="challenge-opponent-name" class="selected-opponent"></div>
         </div>
-        <button class="btn-delete-challenge text-gray-500 hover:text-red-400 transition-colors text-sm" data-id="${c.id}">
-          <i class="fa-solid fa-trash-can"></i>
-        </button>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Challenge Type</label>
+            <select id="challenge-type">
+              ${TYPES.map(t => `<option value="${t.key}">${t.label} – ${t.desc}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label>Wager Description</label><input type="text" id="challenge-wager-desc" placeholder="e.g. Loser buys dinner"></div>
+          <div class="form-group"><label>Wager Amount ($)</label><input type="number" id="challenge-wager-amt" placeholder="0" min="0" step="0.01"></div>
+          <div class="form-group"><label>Start Date</label><input type="date" id="challenge-start" value="${new Date().toISOString().slice(0, 10)}"></div>
+          <div class="form-group"><label>End Date</label><input type="date" id="challenge-end"></div>
+          <div class="form-group"><label>League (optional)</label><input type="text" id="challenge-league" placeholder="League name"></div>
+        </div>
+        <div class="disclaimer">⚠️ <strong>Disclaimer:</strong> Wagers are between participants only. Bowling Hub is not responsible for any wager outcomes or disputes. Ensure wagers comply with local laws.</div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="Challenges.createChallenge()">Send Challenge</button>
+          <button class="btn btn-secondary" onclick="Challenges.hideCreateForm()">Cancel</button>
+        </div>
       </div>
 
-      ${isCompleted ? `
-        <div class="flex items-center justify-between bg-bowl-navy rounded-lg px-4 py-2 mt-2">
-          <div class="text-center">
-            <p class="text-xs text-bowl-muted">You</p>
-            <p class="font-bold text-lg">${c.myScore || '—'}</p>
-          </div>
-          <div class="text-center font-bold ${c.winner === 'me' ? 'text-bowl-green' : c.winner === 'them' ? 'text-bowl-red' : 'text-gray-400'}">${winnerLabel}</div>
-          <div class="text-center">
-            <p class="text-xs text-bowl-muted">${c.opponentName}</p>
-            <p class="font-bold text-lg">${c.theirScore || '—'}</p>
+      ${pending.length > 0 ? `
+        <div class="card highlight-card">
+          <h3>📨 Incoming Challenges <span class="notif-badge">${pending.length}</span></h3>
+          <div class="challenge-cards">
+            ${pending.map(c => `
+              <div class="challenge-card pending">
+                <div class="challenge-card-header">
+                  <span class="challenge-type-badge">${TYPES.find(t => t.key === c.challenge_type)?.label || c.challenge_type}</span>
+                  <span class="challenge-dates">${formatDate(c.start_date)} – ${formatDate(c.end_date)}</span>
+                </div>
+                <p><strong>${escHtml(c.challenger?.full_name || 'Someone')}</strong> challenges you!</p>
+                ${c.wager_description ? `<p class="challenge-wager">💰 ${escHtml(c.wager_description)} ${c.wager_amount ? '($' + Number(c.wager_amount).toFixed(2) + ')' : ''}</p>` : ''}
+                <div class="challenge-actions">
+                  <button class="btn btn-sm btn-primary" onclick="Challenges.respond('${c.id}', 'active')">✅ Accept</button>
+                  <button class="btn btn-sm btn-danger" onclick="Challenges.respond('${c.id}', 'declined')">❌ Decline</button>
+                </div>
+              </div>
+            `).join('')}
           </div>
         </div>
       ` : ''}
 
-      <div class="flex gap-2 mt-3">
-        ${c.status === 'Pending' ? `
-          <button class="btn-accept-challenge text-xs bg-green-600/20 hover:bg-green-600/30 text-green-400 px-3 py-1.5 rounded-lg transition-colors" data-id="${c.id}">
-            <i class="fa-solid fa-check mr-1"></i> Accept
-          </button>
-          <button class="btn-decline-challenge text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 px-3 py-1.5 rounded-lg transition-colors" data-id="${c.id}">
-            <i class="fa-solid fa-xmark mr-1"></i> Decline
-          </button>
-        ` : ''}
-        ${c.status === 'Active' ? `
-          <button class="btn-record-result text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-3 py-1.5 rounded-lg transition-colors" data-id="${c.id}">
-            <i class="fa-solid fa-pen mr-1"></i> Record Result
-          </button>
-        ` : ''}
-      </div>
-
-      <p class="text-xs text-bowl-muted mt-2">${formatDate(c.createdAt?.split('T')[0])}</p>
-    </div>
-  `;
-}
-
-function openNewChallengeModal(contacts) {
-  showModal('⚡ New Challenge', (body) => {
-    body.innerHTML = `
-      <div class="space-y-4">
-        ${formField('Opponent', `
-          <div>
-            <select id="challenge-contact" class="${selectClass()} mb-2">
-              <option value="">— Choose from contacts —</option>
-              ${contacts.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-            </select>
-            <input type="text" id="challenge-opponent" placeholder="Or type opponent name" class="${inputClass()}" />
+      ${myPending.length > 0 ? `
+        <div class="card">
+          <h3>⏳ Awaiting Response</h3>
+          <div class="challenge-cards">
+            ${myPending.map(c => `
+              <div class="challenge-card waiting">
+                <div class="challenge-card-header">
+                  <span class="challenge-type-badge">${TYPES.find(t => t.key === c.challenge_type)?.label || c.challenge_type}</span>
+                </div>
+                <p>Waiting for <strong>${escHtml(c.opponent?.full_name || 'opponent')}</strong> to respond</p>
+                ${c.wager_description ? `<p class="challenge-wager">💰 ${escHtml(c.wager_description)}</p>` : ''}
+                <button class="btn btn-sm btn-danger" onclick="Challenges.cancelChallenge('${c.id}')">Cancel</button>
+              </div>
+            `).join('')}
           </div>
-        `, 'challenge-contact')}
+        </div>
+      ` : ''}
 
-        ${formField('Challenge Type', `
-          <select id="challenge-type" class="${selectClass()}">
-            ${CHALLENGE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
-          </select>
-        `, 'challenge-type')}
+      <div class="card">
+        <h3>🔥 Active Challenges</h3>
+        ${active.length === 0 ? '<p class="empty-state">No active challenges. Send one!</p>' :
+          `<div class="challenge-cards">
+            ${active.map(c => {
+              const isChallenger = c.challenger_id === user.id;
+              const opponentName = isChallenger ? c.opponent?.full_name : c.challenger?.full_name;
+              return `
+                <div class="challenge-card active-challenge">
+                  <div class="challenge-card-header">
+                    <span class="challenge-type-badge">${TYPES.find(t => t.key === c.challenge_type)?.label || c.challenge_type}</span>
+                    <span class="challenge-dates">${formatDate(c.start_date)} – ${formatDate(c.end_date)}</span>
+                  </div>
+                  <p>vs <strong>${escHtml(opponentName || 'Opponent')}</strong></p>
+                  ${c.wager_description ? `<p class="challenge-wager">💰 ${escHtml(c.wager_description)} ${c.wager_amount ? '($' + Number(c.wager_amount).toFixed(2) + ')' : ''}</p>` : ''}
+                  <div class="challenge-progress">
+                    <div class="progress-label">Your Score: ${c.challenger_id === user.id ? (c.challenger_score || '–') : (c.opponent_score || '–')}</div>
+                    <div class="progress-label">Their Score: ${c.challenger_id === user.id ? (c.opponent_score || '–') : (c.challenger_score || '–')}</div>
+                  </div>
+                  <button class="btn btn-sm btn-secondary" onclick="Challenges.updateScore('${c.id}', ${c.challenger_id === user.id})">Update My Score</button>
+                </div>
+              `;
+            }).join('')}
+          </div>`}
+      </div>
 
-        ${formField('Stakes / Wager', `<input type="text" id="challenge-stakes" placeholder="Loser buys dinner" class="${inputClass()}" />`, 'challenge-stakes')}
+      ${completed.length > 0 ? `
+        <div class="card">
+          <h3>📋 Completed / Declined</h3>
+          <table class="data-table">
+            <thead><tr><th>Type</th><th>Opponent</th><th>Wager</th><th>Status</th><th>Result</th></tr></thead>
+            <tbody>${completed.map(c => {
+              const isChallenger = c.challenger_id === user.id;
+              const opponentName = isChallenger ? c.opponent?.full_name : c.challenger?.full_name;
+              return `<tr>
+                <td>${TYPES.find(t => t.key === c.challenge_type)?.label || c.challenge_type}</td>
+                <td>${escHtml(opponentName || 'Unknown')}</td>
+                <td>${escHtml(c.wager_description || '-')}</td>
+                <td><span class="badge badge-${c.status === 'completed' ? 'success' : 'danger'}">${c.status}</span></td>
+                <td>${c.winner_id ? (c.winner_id === user.id ? '🏆 Won!' : 'Lost') : '-'}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      ` : ''}
 
-        <button id="challenge-save" class="w-full bg-bowl-red hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-          <i class="fa-solid fa-bolt"></i> Create Challenge
-        </button>
+      <div class="card">
+        <h3>ℹ️ Challenge Types</h3>
+        <div class="types-grid">
+          ${TYPES.map(t => `
+            <div class="type-card">
+              <h4>${t.label}</h4>
+              <p>${t.desc}</p>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
+  }
 
-    // Auto-fill from contact select
-    body.querySelector('#challenge-contact').addEventListener('change', (e) => {
-      if (e.target.value) {
-        body.querySelector('#challenge-opponent').value = e.target.value;
-      }
-    });
+  function showCreateForm() { document.getElementById('challenge-create-form').style.display = 'block'; }
+  function hideCreateForm() { document.getElementById('challenge-create-form').style.display = 'none'; }
 
-    body.querySelector('#challenge-save').addEventListener('click', () => {
-      const opponentName = body.querySelector('#challenge-opponent').value.trim() || body.querySelector('#challenge-contact').value;
-      if (!opponentName) {
-        showToast('Please enter an opponent', 'error');
-        return;
-      }
+  async function searchOpponents() {
+    const query = document.getElementById('challenge-search').value.trim();
+    const results = document.getElementById('challenge-search-results');
+    if (query.length < 2) { results.innerHTML = ''; return; }
 
-      const challenge = {
-        opponentName,
-        type: body.querySelector('#challenge-type').value,
-        stakes: body.querySelector('#challenge-stakes').value.trim() || 'Bragging rights',
-        status: 'Pending',
-        myScore: null,
-        theirScore: null,
-        winner: null,
-        completedAt: null,
-      };
+    const user = Auth.getUser();
+    try {
+      const { data, error } = await sb.from('profiles')
+        .select('id, full_name, city, state')
+        .ilike('full_name', `%${query}%`)
+        .neq('id', user.id)
+        .limit(10);
 
-      // Save contact if new
-      const contacts = Storage.getContacts();
-      if (!contacts.find(c => c.name.toLowerCase() === opponentName.toLowerCase())) {
-        Storage.saveContact({ name: opponentName, usbcId: '', email: '' });
-      }
+      if (error) throw error;
+      results.innerHTML = (data || []).map(p =>
+        `<div class="search-result-item" onclick="Challenges.selectOpponent('${p.id}', '${escHtml(p.full_name)}')">
+          <strong>${escHtml(p.full_name)}</strong>
+          <span class="text-muted">${escHtml([p.city, p.state].filter(Boolean).join(', ') || '')}</span>
+        </div>`
+      ).join('') || '<p class="empty-state">No bowlers found.</p>';
+    } catch (err) {
+      results.innerHTML = '';
+    }
+  }
 
-      Storage.saveChallenge(challenge);
-      closeModal();
-      showToast('Challenge created! ⚡', 'success');
-      renderChallenges(document.getElementById('view-container'));
-    });
-  });
-}
+  function selectOpponent(id, name) {
+    document.getElementById('challenge-opponent-id').value = id;
+    document.getElementById('challenge-opponent-name').innerHTML = `Selected: <strong>${name}</strong>`;
+    document.getElementById('challenge-search-results').innerHTML = '';
+    document.getElementById('challenge-search').value = '';
+  }
 
-function openRecordResultModal(challenge, parentContainer) {
-  showModal('📊 Record Result', (body) => {
-    body.innerHTML = `
-      <div class="space-y-4">
-        <p class="text-bowl-muted text-sm">
-          <strong>${challenge.type}</strong> vs <strong>${challenge.opponentName}</strong>
-        </p>
+  async function createChallenge() {
+    const user = Auth.getUser();
+    if (!user) return;
 
-        ${formField('Your Score', `<input type="number" id="result-my-score" min="0" placeholder="e.g., 650" class="${inputClass()}" />`, 'result-my-score')}
-        ${formField(`${challenge.opponentName}'s Score`, `<input type="number" id="result-their-score" min="0" placeholder="e.g., 620" class="${inputClass()}" />`, 'result-their-score')}
+    const opponentId = document.getElementById('challenge-opponent-id').value;
+    if (!opponentId) return Toast.show('Select an opponent', 'error');
 
-        <button id="result-save" class="w-full bg-bowl-red hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-          <i class="fa-solid fa-flag-checkered"></i> Submit Result
-        </button>
-      </div>
-    `;
+    const type = document.getElementById('challenge-type').value;
+    const wagerDesc = document.getElementById('challenge-wager-desc').value.trim();
+    const wagerAmt = document.getElementById('challenge-wager-amt').value ? Number(document.getElementById('challenge-wager-amt').value) : null;
+    const startDate = document.getElementById('challenge-start').value;
+    const endDate = document.getElementById('challenge-end').value;
+    const league = document.getElementById('challenge-league').value.trim();
 
-    body.querySelector('#result-save').addEventListener('click', () => {
-      const myScore = Number(body.querySelector('#result-my-score').value);
-      const theirScore = Number(body.querySelector('#result-their-score').value);
+    if (!startDate || !endDate) return Toast.show('Set start and end dates', 'error');
 
-      if (!myScore && myScore !== 0) {
-        showToast('Enter your score', 'error');
-        return;
-      }
-      if (!theirScore && theirScore !== 0) {
-        showToast('Enter their score', 'error');
-        return;
-      }
+    try {
+      const { error } = await sb.from('challenges').insert({
+        challenger_id: user.id,
+        opponent_id: opponentId,
+        challenge_type: type,
+        wager_description: wagerDesc || null,
+        wager_amount: wagerAmt,
+        start_date: startDate,
+        end_date: endDate,
+        league_name: league || null,
+        status: 'pending'
+      });
+      if (error) throw error;
+      Toast.show('Challenge sent! ⚔️', 'success');
+      hideCreateForm();
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
 
-      challenge.myScore = myScore;
-      challenge.theirScore = theirScore;
-      challenge.status = 'Completed';
-      challenge.completedAt = new Date().toISOString();
+  async function respond(id, status) {
+    try {
+      const { error } = await sb.from('challenges').update({ status }).eq('id', id);
+      if (error) throw error;
+      Toast.show(status === 'active' ? 'Challenge accepted! Game on! 🎳' : 'Challenge declined.', status === 'active' ? 'success' : 'info');
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
 
-      if (myScore > theirScore) challenge.winner = 'me';
-      else if (theirScore > myScore) challenge.winner = 'them';
-      else challenge.winner = 'draw';
+  async function cancelChallenge(id) {
+    if (!confirm('Cancel this challenge?')) return;
+    try {
+      const { error } = await sb.from('challenges').delete().eq('id', id);
+      if (error) throw error;
+      Toast.show('Challenge cancelled', 'success');
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
 
-      Storage.saveChallenge(challenge);
-      closeModal();
+  async function updateScore(id, isChallenger) {
+    const score = prompt('Enter your current score:');
+    if (!score || isNaN(score)) return;
 
-      const resultMsg = challenge.winner === 'me' ? 'You won! 🏆' : challenge.winner === 'them' ? `${challenge.opponentName} wins 😤` : 'It\'s a draw! 🤝';
-      showToast(resultMsg, challenge.winner === 'me' ? 'success' : 'info');
-      renderChallenges(parentContainer);
-    });
-  });
-}
+    const field = isChallenger ? 'challenger_score' : 'opponent_score';
+    try {
+      const { error } = await sb.from('challenges').update({ [field]: Number(score) }).eq('id', id);
+      if (error) throw error;
+      Toast.show('Score updated!', 'success');
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
+
+  return { load, showCreateForm, hideCreateForm, searchOpponents, selectOpponent, createChallenge, respond, cancelChallenge, updateScore };
+})();

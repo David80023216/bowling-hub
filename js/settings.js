@@ -1,178 +1,147 @@
-/**
- * settings.js — Settings view for Bowling Hub
- */
+/* Settings module – profile editing, account management */
 
-import * as Storage from './storage.js';
-import { showToast, formField, inputClass, updateProfileUI, navigateTo } from './app.js';
+const Settings = (() => {
 
-export function renderSettings(container) {
-  const profile = Storage.getProfile() || {};
-  const settings = Storage.getSettings();
-  const leagues = Storage.getLeagues();
+  async function load() {
+    const container = document.getElementById('tab-settings');
+    const user = Auth.getUser();
+    if (!user) return;
 
-  container.innerHTML = `
-    <div class="mb-6">
-      <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-gear text-bowl-muted"></i> Settings</h2>
-      <p class="text-bowl-muted text-sm">Manage your profile and app settings</p>
-    </div>
+    container.innerHTML = '<div class="card"><div class="skeleton skeleton-block"></div></div>';
 
-    <!-- Profile Section -->
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5 mb-6">
-      <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-user text-bowl-red"></i> Profile</h3>
-      <div class="space-y-4">
-        ${formField('Name', `<input type="text" id="settings-name" value="${profile.name || ''}" class="${inputClass()}" />`, 'settings-name')}
-        ${formField('USBC Member ID', `<input type="text" id="settings-usbc" value="${profile.usbcId || ''}" placeholder="1234-56789" class="${inputClass()}" />`, 'settings-usbc')}
-        ${formField('Home Center', `<input type="text" id="settings-center" value="${profile.homeCenter || ''}" placeholder="Sunset Lanes" class="${inputClass()}" />`, 'settings-center')}
-        ${formField('Email', `<input type="email" id="settings-email" value="${profile.email || ''}" placeholder="bowler@email.com" class="${inputClass()}" />`, 'settings-email')}
-        ${formField('bowl.com Username', `<input type="text" id="settings-bowlcom" value="${profile.bowlcomUsername || ''}" placeholder="For data sync" class="${inputClass()}" />`, 'settings-bowlcom')}
+    try {
+      const [profileRes, leaguesRes] = await Promise.all([
+        sb.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        sb.from('user_leagues').select('*, league:leagues(name, last_synced)').eq('user_id', user.id)
+      ]);
 
-        <button id="settings-save-profile" class="bg-bowl-red hover:bg-red-600 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2">
-          <i class="fa-solid fa-check"></i> Save Profile
-        </button>
-      </div>
-    </div>
+      const profile = profileRes.data || {};
+      const leagues = (leaguesRes.data || []);
 
-    <!-- League Connections -->
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5 mb-6">
-      <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-link text-blue-400"></i> League Connections</h3>
-      ${leagues.length === 0 ? `
-        <p class="text-bowl-muted text-sm">No leagues added yet. <button class="text-bowl-red hover:underline" id="settings-go-leagues">Add a league</button></p>
-      ` : `
-        <div class="space-y-2">
-          ${leagues.map(l => `
-            <div class="flex items-center justify-between bg-bowl-navy rounded-lg px-4 py-3">
-              <div>
-                <p class="font-medium text-sm">${l.name}</p>
-                <p class="text-xs text-bowl-muted">${l.center || 'No center'}</p>
-              </div>
-              <span class="text-xs font-mono text-bowl-muted">${l.lssId ? `LSS: ${l.lssId}` : 'No LSS ID'}</span>
-            </div>
-          `).join('')}
-        </div>
-      `}
-    </div>
-
-    <!-- Theme Toggle -->
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5 mb-6">
-      <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-palette text-purple-400"></i> Appearance</h3>
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="font-medium">Dark Mode</p>
-          <p class="text-sm text-bowl-muted">Toggle dark/light theme</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="settings-theme-toggle" class="sr-only peer" ${settings.theme === 'dark' ? 'checked' : ''} />
-          <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bowl-red"></div>
-        </label>
-      </div>
-    </div>
-
-    <!-- Data Management -->
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5 mb-6">
-      <h3 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-database text-bowl-amber"></i> Data Management</h3>
-      <div class="space-y-3">
-        <div class="flex flex-wrap gap-3">
-          <button id="settings-export" class="bg-bowl-border hover:bg-gray-600 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2 text-sm">
-            <i class="fa-solid fa-download"></i> Export Data
-          </button>
-          <label id="settings-import-label" class="bg-bowl-border hover:bg-gray-600 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2 text-sm cursor-pointer">
-            <i class="fa-solid fa-upload"></i> Import Data
-            <input type="file" id="settings-import" accept=".json" class="hidden" />
-          </label>
-        </div>
-        <hr class="border-bowl-border" />
-        <button id="settings-clear" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 font-semibold py-2.5 px-5 rounded-lg transition-colors flex items-center gap-2 text-sm">
-          <i class="fa-solid fa-trash-can"></i> Clear All Data
-        </button>
-      </div>
-    </div>
-
-    <!-- About -->
-    <div class="bg-bowl-dark border border-bowl-border rounded-xl p-5">
-      <h3 class="font-bold text-lg mb-2 flex items-center gap-2">🎳 About Bowling Hub</h3>
-      <p class="text-sm text-bowl-muted mb-2">Your personal bowling companion app. Track scores, manage leagues, log honor achievements, and challenge friends.</p>
-      <p class="text-xs text-bowl-muted">Version 1.0.0 • Built with ❤️ for bowlers</p>
-      <p class="text-xs text-bowl-muted mt-1">All data is stored locally on your device using localStorage.</p>
-    </div>
-  `;
-
-  // Save profile
-  document.getElementById('settings-save-profile').addEventListener('click', () => {
-    const name = document.getElementById('settings-name').value.trim();
-    if (!name) {
-      showToast('Name is required', 'error');
-      return;
+      render(container, profile, leagues, user);
+    } catch (err) {
+      console.error('Settings load error:', err);
+      Toast.show('Error loading settings', 'error');
     }
-    const updated = {
-      ...profile,
-      name,
-      usbcId: document.getElementById('settings-usbc').value.trim(),
-      homeCenter: document.getElementById('settings-center').value.trim(),
-      email: document.getElementById('settings-email').value.trim(),
-      bowlcomUsername: document.getElementById('settings-bowlcom').value.trim(),
+  }
+
+  function render(container, profile, leagues, user) {
+    container.innerHTML = `
+      <div class="page-header">
+        <h1>⚙️ Settings</h1>
+      </div>
+
+      <div class="card">
+        <h3>👤 Profile</h3>
+        <div class="form-grid">
+          <div class="form-group"><label>Full Name</label><input type="text" id="set-name" value="${escHtml(profile.full_name || '')}"></div>
+          <div class="form-group"><label>USBC Member ID</label><input type="text" id="set-usbc" value="${escHtml(profile.usbc_id || '')}" placeholder="USBC #"></div>
+          <div class="form-group"><label>Bowl.com Username</label><input type="text" id="set-bowlcom" value="${escHtml(profile.bowlcom_username || '')}" placeholder="bowl.com username"></div>
+          <div class="form-group"><label>Home Center</label><input type="text" id="set-center" value="${escHtml(profile.home_center || '')}" placeholder="Your home bowling center"></div>
+          <div class="form-group"><label>City</label><input type="text" id="set-city" value="${escHtml(profile.city || '')}"></div>
+          <div class="form-group"><label>State</label><input type="text" id="set-state" value="${escHtml(profile.state || '')}" placeholder="e.g. OH"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="Settings.saveProfile()">Save Profile</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🎳 Connected Leagues</h3>
+        ${leagues.length === 0 ? '<p class="empty-state">No leagues connected. Join or create leagues from the Leagues tab.</p>' :
+          `<table class="data-table">
+            <thead><tr><th>League</th><th>Last Synced</th></tr></thead>
+            <tbody>${leagues.map(ul => `
+              <tr>
+                <td>${escHtml(ul.league?.name || 'Unknown')}</td>
+                <td>${ul.league?.last_synced ? new Date(ul.league.last_synced).toLocaleString() : 'Never'}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table>`}
+      </div>
+
+      <div class="card">
+        <h3>🔄 Data Sync</h3>
+        <p class="text-muted">Auto-sync runs periodically for leagues with LSS IDs. You can trigger a manual sync below.</p>
+        <button class="btn btn-secondary" onclick="Settings.syncAll()">🔄 Sync All Now</button>
+      </div>
+
+      <div class="card">
+        <h3>🔐 Account</h3>
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="set-password" placeholder="Enter new password (min 6 chars)">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" onclick="Settings.changePassword()">Change Password</button>
+        </div>
+        <hr style="border-color: #333; margin: 1.5rem 0;">
+        <p class="text-muted">Email: ${escHtml(user.email)}</p>
+      </div>
+    `;
+  }
+
+  async function saveProfile() {
+    const user = Auth.getUser();
+    if (!user) return;
+
+    const updates = {
+      full_name: document.getElementById('set-name').value.trim(),
+      usbc_id: document.getElementById('set-usbc').value.trim() || null,
+      bowlcom_username: document.getElementById('set-bowlcom').value.trim() || null,
+      home_center: document.getElementById('set-center').value.trim() || null,
+      city: document.getElementById('set-city').value.trim() || null,
+      state: document.getElementById('set-state').value.trim() || null,
+      updated_at: new Date().toISOString()
     };
-    Storage.saveProfile(updated);
-    updateProfileUI();
-    showToast('Profile saved! ✅', 'success');
-  });
 
-  // Go to leagues
-  document.getElementById('settings-go-leagues')?.addEventListener('click', () => navigateTo('leagues'));
+    if (!updates.full_name) return Toast.show('Name is required', 'error');
 
-  // Theme toggle
-  document.getElementById('settings-theme-toggle').addEventListener('change', (e) => {
-    const theme = e.target.checked ? 'dark' : 'light';
-    Storage.saveSettings({ ...settings, theme });
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    try {
+      const { error } = await sb.from('profiles').upsert({ id: user.id, ...updates });
+      if (error) throw error;
+
+      // Also update user metadata
+      await sb.auth.updateUser({ data: { full_name: updates.full_name } });
+
+      Toast.show('Profile saved! ✅', 'success');
+      await Auth.loadProfile();
+    } catch (err) {
+      Toast.show(err.message, 'error');
     }
-    showToast(`${theme === 'dark' ? '🌙 Dark' : '☀️ Light'} mode activated`, 'info');
-  });
+  }
 
-  // Export
-  document.getElementById('settings-export').addEventListener('click', () => {
-    const data = Storage.exportAllData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bowling-hub-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Data exported! 📦', 'success');
-  });
+  async function changePassword() {
+    const pw = document.getElementById('set-password').value;
+    if (!pw || pw.length < 6) return Toast.show('Password must be 6+ characters', 'error');
 
-  // Import
-  document.getElementById('settings-import').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (confirm('This will overwrite all your current data. Continue?')) {
-          Storage.importAllData(data);
-          updateProfileUI();
-          showToast('Data imported! ✅', 'success');
-          renderSettings(container);
+    try {
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) throw error;
+      Toast.show('Password updated! 🔐', 'success');
+      document.getElementById('set-password').value = '';
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
+
+  async function syncAll() {
+    Toast.show('Sync initiated. League data will update shortly via server-side sync.', 'info');
+    // Touch last_synced on user's leagues
+    const user = Auth.getUser();
+    if (!user) return;
+    try {
+      const { data } = await sb.from('user_leagues').select('league_id').eq('user_id', user.id);
+      if (data) {
+        for (const ul of data) {
+          await sb.from('leagues').update({ last_synced: new Date().toISOString() }).eq('id', ul.league_id);
         }
-      } catch (err) {
-        showToast('Invalid JSON file', 'error');
       }
-    };
-    reader.readAsText(file);
-  });
-
-  // Clear all
-  document.getElementById('settings-clear').addEventListener('click', () => {
-    if (confirm('⚠️ This will delete ALL your bowling data permanently. Are you sure?')) {
-      if (confirm('Really sure? This cannot be undone.')) {
-        Storage.clearAllData();
-        showToast('All data cleared', 'info');
-        window.location.reload();
-      }
+      Toast.show('Sync timestamps updated', 'success');
+    } catch (err) {
+      console.error(err);
     }
-  });
-}
+  }
+
+  return { load, saveProfile, changePassword, syncAll };
+})();

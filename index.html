@@ -1,212 +1,603 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bowling Hub — Your Bowling Companion</title>
-  <meta name="description" content="Track scores, leagues, honor rolls, and challenges. Your all-in-one bowling companion app." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎳</text></svg>" />
-
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            bowl: {
-              navy: '#0f172a',
-              dark: '#1e293b',
-              card: '#1e293b',
-              border: '#334155',
-              red: '#ef4444',
-              amber: '#f59e0b',
-              green: '#22c55e',
-              pin: '#f8fafc',
-              muted: '#94a3b8',
-              surface: '#0f172a',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bowling Hub 🎳</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎳</text></svg>">
   <style>
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    /* ===== CSS Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-dark: #1a1a2e;
+      --bg-darker: #12121f;
+      --bg-card: #0f3460;
+      --bg-card-hover: #153d6f;
+      --accent: #e94560;
+      --accent-orange: #f97316;
+      --accent-green: #22c55e;
+      --accent-blue: #3b82f6;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --border: #1e3a5f;
+      --sidebar-w: 240px;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+      background: var(--bg-darker);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    a { color: var(--accent-orange); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    input, select, textarea { font-family: inherit; font-size: 0.95rem; }
 
-    /* Transitions */
-    .view-container { animation: fadeIn 0.25s ease; }
+    /* ===== Auth Modal ===== */
+    .auth-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.7);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .auth-modal.active { display: flex; }
+    .auth-box {
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 2rem;
+      width: 100%; max-width: 400px;
+      margin: 1rem;
+      box-shadow: 0 25px 60px rgba(0,0,0,.5);
+    }
+    .auth-box h2 { text-align: center; margin-bottom: .5rem; font-size: 1.8rem; }
+    .auth-box .auth-subtitle { text-align: center; color: var(--text-muted); margin-bottom: 1.5rem; }
+    .auth-box .form-group { margin-bottom: 1rem; }
+    .auth-box label { display: block; margin-bottom: .3rem; color: var(--text-muted); font-size: .85rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+    .auth-box input[type="text"], .auth-box input[type="email"], .auth-box input[type="password"] {
+      width: 100%; padding: .75rem 1rem; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-darker); color: var(--text);
+      transition: border-color .2s;
+    }
+    .auth-box input:focus { outline: none; border-color: var(--accent); }
+    .auth-box .btn { width: 100%; margin-top: .5rem; }
+    .auth-box .toggle-link { text-align: center; margin-top: 1rem; font-size: .9rem; }
+
+    /* ===== Layout ===== */
+    #app-container { display: none; min-height: 100vh; }
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: var(--sidebar-w); background: var(--bg-dark);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 100; transition: transform .3s;
+    }
+    .sidebar-brand {
+      padding: 1.25rem 1rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: .6rem;
+      font-size: 1.2rem; font-weight: 700;
+    }
+    .sidebar-brand span { font-size: 1.6rem; }
+    .sidebar-nav { flex: 1; padding: .5rem 0; overflow-y: auto; }
+    .nav-item {
+      display: flex; align-items: center; gap: .7rem;
+      padding: .75rem 1.25rem; cursor: pointer;
+      color: var(--text-muted); transition: all .2s;
+      font-weight: 500; border-left: 3px solid transparent;
+    }
+    .nav-item:hover { background: rgba(233,69,96,.08); color: var(--text); }
+    .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(233,69,96,.1); }
+    .nav-item .nav-icon { font-size: 1.2rem; width: 1.5rem; text-align: center; }
+    .sidebar-user {
+      padding: 1rem; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: .7rem;
+    }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .95rem;
+    }
+    .user-info { flex: 1; min-width: 0; }
+    .user-info .user-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-info .user-role { font-size: .75rem; color: var(--text-muted); }
+    #logout-btn {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      font-size: 1.1rem; padding: .3rem; border-radius: 6px; transition: all .2s;
+    }
+    #logout-btn:hover { color: var(--accent); background: rgba(233,69,96,.15); }
+
+    .main-content {
+      margin-left: var(--sidebar-w); padding: 1.5rem 2rem 3rem;
+      min-height: 100vh;
+    }
+    .mobile-header {
+      display: none; position: sticky; top: 0; z-index: 50;
+      background: var(--bg-dark); border-bottom: 1px solid var(--border);
+      padding: .75rem 1rem; align-items: center; gap: .7rem;
+    }
+    #sidebar-toggle {
+      background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; padding: .2rem;
+    }
+    .mobile-header .brand-text { font-weight: 700; font-size: 1.1rem; }
+    .sidebar-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 90;
+    }
+    .sidebar-overlay.active { display: block; }
+
+    /* ===== Tab Content ===== */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn .3s; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Glow effects */
-    .glow-red { box-shadow: 0 0 15px rgba(239,68,68,0.3); }
-    .glow-amber { box-shadow: 0 0 15px rgba(245,158,11,0.3); }
-    .glow-green { box-shadow: 0 0 15px rgba(34,197,94,0.3); }
-
-    /* Rainbow text for 300 */
-    .rainbow-text {
-      background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e, #3b82f6, #8b5cf6, #ef4444);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: rainbow 3s linear infinite;
+    /* ===== Page Header ===== */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
     }
-    @keyframes rainbow { to { background-position: 200% center; } }
+    .page-header h1 { font-size: 1.6rem; font-weight: 700; }
+    .subtitle { color: var(--text-muted); margin-top: .3rem; }
 
-    /* Toast */
-    .toast { animation: slideUp 0.3s ease, fadeOut 0.3s ease 2.7s; }
-    @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    @keyframes fadeOut { to { opacity: 0; } }
+    /* ===== Cards ===== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    }
+    .card h3 { margin-bottom: 1rem; font-size: 1.1rem; display: flex; align-items: center; gap: .5rem; }
+    .highlight-card { border-color: var(--accent); box-shadow: 0 0 20px rgba(233,69,96,.15); }
 
-    /* Modal backdrop */
-    .modal-backdrop { animation: fadeInBg 0.2s ease; }
-    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+    /* ===== Stat Cards ===== */
+    .stat-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .stat-cards-sm { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem; text-align: center;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,.3); }
+    .stat-card.accent { border-color: var(--accent); }
+    .stat-icon { font-size: 1.5rem; margin-bottom: .4rem; }
+    .stat-value { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+    .stat-label { color: var(--text-muted); font-size: .8rem; margin-top: .3rem; text-transform: uppercase; letter-spacing: .5px; }
 
-    /* Nav active indicator */
-    .nav-item.active { color: #ef4444; }
-    .nav-item.active .nav-indicator { width: 100%; }
-    .nav-indicator { transition: width 0.2s ease; }
+    /* ===== Grid ===== */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 
-    /* Score highlight */
-    .score-perfect { background: linear-gradient(135deg, #fbbf24, #f59e0b, #d97706); }
-    .score-high { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+    /* ===== Tables ===== */
+    .data-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .data-table th {
+      text-align: left; padding: .65rem .75rem;
+      color: var(--text-muted); font-size: .75rem;
+      text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 2px solid var(--border);
+    }
+    .data-table td { padding: .65rem .75rem; border-bottom: 1px solid rgba(30,58,95,.5); }
+    .data-table tbody tr:nth-child(even) { background: rgba(255,255,255,.02); }
+    .data-table tbody tr:hover { background: rgba(233,69,96,.06); }
+    .honor-row { background: rgba(249,115,22,.08) !important; }
+    .honor-text { color: var(--accent-orange); font-weight: 700; }
+    .highlight-row { background: rgba(233,69,96,.12) !important; }
+    .action-cell { white-space: nowrap; }
+    .data-table { overflow-x: auto; display: block; }
+    .standings-table { display: table; }
 
-    /* Spinner */
-    .spinner { border: 3px solid #334155; border-top-color: #ef4444; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.7s linear infinite; }
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+      padding: .65rem 1.25rem; border: none; border-radius: var(--radius-sm);
+      font-weight: 600; font-size: .9rem; cursor: pointer;
+      transition: all .2s; text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #d63a54; transform: translateY(-1px); box-shadow: 0 4px 15px rgba(233,69,96,.4); }
+    .btn-secondary { background: rgba(255,255,255,.1); color: var(--text); }
+    .btn-secondary:hover { background: rgba(255,255,255,.18); }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: .4rem .8rem; font-size: .8rem; }
+    .btn-icon {
+      background: none; border: none; cursor: pointer;
+      font-size: 1rem; padding: .3rem; border-radius: 6px;
+      transition: background .2s;
+    }
+    .btn-icon:hover { background: rgba(255,255,255,.1); }
+    .btn-group { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    /* ===== Forms ===== */
+    .form-card { border-color: var(--accent-blue); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block; margin-bottom: .3rem; color: var(--text-muted);
+      font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: .6rem .8rem; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-darker); color: var(--text);
+      transition: border-color .2s;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+    .form-group input[type="checkbox"] { width: auto; margin-right: .5rem; }
+    .form-actions { display: flex; gap: .75rem; margin-top: 1rem; flex-wrap: wrap; }
+    .game-inputs { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+    .game-input { width: 100px !important; text-align: center; font-weight: 700; font-size: 1.1rem !important; }
+    .score-calc { font-size: 1rem; color: var(--accent-orange); font-weight: 600; display: flex; gap: 1.5rem; margin: .5rem 0; }
+    .filter-row { display: flex; gap: .75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .filter-row select, .filter-row input { padding: .5rem .7rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-darker); color: var(--text); font-size: .85rem; }
+
+    /* ===== Badges ===== */
+    .badge {
+      display: inline-block; padding: .2rem .6rem; border-radius: 20px;
+      font-size: .75rem; font-weight: 600;
+    }
+    .badge-success { background: rgba(34,197,94,.2); color: var(--accent-green); }
+    .badge-pending { background: rgba(249,115,22,.2); color: var(--accent-orange); }
+    .badge-danger { background: rgba(220,38,38,.2); color: #f87171; }
+    .badge-team { background: rgba(59,130,246,.2); color: var(--accent-blue); }
+    .notif-badge {
+      background: var(--accent); color: #fff; border-radius: 50%;
+      width: 22px; height: 22px; display: inline-flex;
+      align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 700;
+    }
+
+    /* ===== Honor Badges ===== */
+    .honor-badges { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .honor-badge {
+      background: var(--bg-card); border: 2px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem; text-align: center;
+      transition: all .3s;
+    }
+    .honor-badge.earned { border-color: var(--accent-orange); box-shadow: 0 0 20px rgba(249,115,22,.15); }
+    .honor-badge.unearned { opacity: .45; }
+    .badge-icon { font-size: 2rem; margin-bottom: .3rem; }
+    .badge-count { font-size: 1.8rem; font-weight: 800; }
+    .badge-label { font-weight: 600; font-size: .9rem; }
+    .badge-desc { color: var(--text-muted); font-size: .75rem; margin-top: .2rem; }
+
+    /* ===== League Cards ===== */
+    .league-card { padding: 0; overflow: hidden; }
+    .league-header {
+      padding: 1.25rem 1.5rem; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+      transition: background .2s;
+    }
+    .league-header:hover { background: rgba(255,255,255,.03); }
+    .league-info h3 { margin-bottom: .3rem; }
+    .league-info p { color: var(--text-muted); font-size: .85rem; }
+    .league-actions { display: flex; align-items: center; gap: .75rem; }
+    .expand-icon { color: var(--text-dim); font-size: .9rem; }
+    .sync-time { padding: 0 1.5rem .5rem; font-size: .75rem; color: var(--text-dim); }
+    .league-detail { padding: 0 1.5rem 1.5rem; }
+    .standings-loading { text-align: center; padding: 2rem; color: var(--text-muted); }
+
+    /* ===== Join Results ===== */
+    .join-results { max-height: 250px; overflow-y: auto; }
+    .join-result-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .75rem; border-bottom: 1px solid var(--border);
+    }
+    .join-result-item div { display: flex; flex-direction: column; }
+    .join-result-item span { font-size: .8rem; color: var(--text-muted); }
+
+    /* ===== Schedule ===== */
+    .schedule-list { display: flex; flex-direction: column; gap: .75rem; }
+    .schedule-item {
+      display: flex; align-items: center; gap: 1.25rem;
+      padding: 1rem; border-radius: var(--radius-sm);
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      transition: all .2s;
+    }
+    .schedule-item:hover { background: rgba(255,255,255,.06); }
+    .schedule-item.this-week { border-color: var(--accent-orange); background: rgba(249,115,22,.06); }
+    .schedule-date-block { text-align: center; min-width: 90px; }
+    .schedule-day { font-weight: 700; font-size: .85rem; color: var(--accent-orange); }
+    .schedule-date { font-size: .8rem; color: var(--text-muted); }
+    .schedule-time { font-size: .75rem; color: var(--text-dim); }
+    .schedule-details { flex: 1; }
+    .schedule-league { font-weight: 600; }
+    .schedule-opponent { color: var(--text-muted); font-size: .9rem; }
+    .schedule-lanes { color: var(--text-dim); font-size: .8rem; }
+
+    /* ===== Challenges ===== */
+    .challenge-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .challenge-card {
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem;
+    }
+    .challenge-card.pending { border-color: var(--accent-orange); }
+    .challenge-card.active-challenge { border-color: var(--accent-green); }
+    .challenge-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .7rem; }
+    .challenge-type-badge {
+      background: rgba(233,69,96,.2); color: var(--accent);
+      padding: .2rem .6rem; border-radius: 20px; font-size: .75rem; font-weight: 600;
+    }
+    .challenge-dates { font-size: .8rem; color: var(--text-muted); }
+    .challenge-wager { color: var(--accent-orange); font-size: .9rem; margin-top: .3rem; }
+    .challenge-actions { display: flex; gap: .5rem; margin-top: .75rem; }
+    .challenge-progress { display: flex; gap: 1.5rem; margin: .75rem 0; }
+    .progress-label { font-size: .85rem; color: var(--text-muted); }
+    .selected-opponent { color: var(--accent-green); font-size: .9rem; margin-top: .3rem; }
+    .search-results {
+      max-height: 200px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      margin-top: .3rem; background: var(--bg-darker);
+    }
+    .search-results:empty { border: none; }
+    .search-result-item {
+      padding: .6rem .8rem; cursor: pointer;
+      border-bottom: 1px solid var(--border); transition: background .2s;
+      display: flex; justify-content: space-between;
+    }
+    .search-result-item:hover { background: rgba(233,69,96,.1); }
+    .types-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .75rem; }
+    .type-card {
+      background: rgba(255,255,255,.03); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 1rem;
+    }
+    .type-card h4 { color: var(--accent-orange); margin-bottom: .3rem; }
+    .type-card p { color: var(--text-muted); font-size: .85rem; }
+    .disclaimer {
+      background: rgba(249,115,22,.1); border: 1px solid rgba(249,115,22,.3);
+      border-radius: var(--radius-sm); padding: .75rem 1rem; margin: 1rem 0;
+      font-size: .85rem; color: var(--accent-orange);
+    }
+
+    /* ===== Upcoming (Dashboard) ===== */
+    .upcoming-list { display: flex; flex-direction: column; gap: .5rem; }
+    .upcoming-item {
+      display: flex; gap: 1rem; padding: .6rem;
+      border-radius: var(--radius-sm); background: rgba(255,255,255,.03);
+    }
+    .upcoming-date { color: var(--accent-orange); font-weight: 700; font-size: .85rem; min-width: 80px; }
+    .upcoming-details { display: flex; flex-direction: column; }
+    .upcoming-details span { color: var(--text-muted); font-size: .85rem; }
+
+    .challenge-list { display: flex; flex-direction: column; gap: .5rem; }
+    .challenge-item {
+      display: flex; gap: 1rem; align-items: center;
+      padding: .6rem; border-radius: var(--radius-sm);
+      background: rgba(255,255,255,.03);
+    }
+    .challenge-type { color: var(--accent); font-weight: 600; min-width: 100px; font-size: .85rem; }
+    .challenge-item .challenge-wager { margin-left: auto; }
+
+    /* ===== Empty States ===== */
+    .empty-state { color: var(--text-dim); text-align: center; padding: 2rem 1rem; font-style: italic; }
+    .text-muted { color: var(--text-muted); }
+
+    /* ===== Skeleton Loaders ===== */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-card) 25%, rgba(255,255,255,.06) 50%, var(--bg-card) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius-sm);
+    }
+    .skeleton-title { height: 32px; width: 250px; margin-bottom: 1rem; }
+    .skeleton-stat { height: 60px; }
+    .skeleton-block { height: 120px; }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+    /* ===== Spinner ===== */
+    .spinner {
+      display: inline-block; width: 20px; height: 20px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Light theme overrides */
-    html:not(.dark) body { background: #f1f5f9; color: #0f172a; }
-    html:not(.dark) .bg-bowl-navy { background: #f1f5f9; }
-    html:not(.dark) .bg-bowl-dark, html:not(.dark) .bg-bowl-card { background: #ffffff; }
-    html:not(.dark) .border-bowl-border { border-color: #e2e8f0; }
-    html:not(.dark) .text-bowl-pin { color: #0f172a; }
-    html:not(.dark) .text-bowl-muted { color: #64748b; }
-    html:not(.dark) .text-white { color: #0f172a; }
-    html:not(.dark) .text-gray-400 { color: #64748b; }
-    html:not(.dark) .text-gray-300 { color: #475569; }
-    html:not(.dark) .text-gray-500 { color: #64748b; }
+    /* ===== Toast ===== */
+    .toast-container {
+      position: fixed; top: 1rem; right: 1rem; z-index: 9999;
+      display: flex; flex-direction: column; gap: .5rem;
+    }
+    .toast {
+      padding: .75rem 1.25rem; border-radius: var(--radius-sm);
+      font-size: .9rem; font-weight: 500; max-width: 350px;
+      animation: slideIn .3s; box-shadow: 0 8px 25px rgba(0,0,0,.4);
+    }
+    .toast-success { background: var(--accent-green); color: #fff; }
+    .toast-error { background: #dc2626; color: #fff; }
+    .toast-info { background: var(--accent-blue); color: #fff; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-    /* Bowling pin animation for welcome */
-    .pin-bounce { animation: pinBounce 1s ease infinite alternate; }
-    @keyframes pinBounce { 0% { transform: translateY(0); } 100% { transform: translateY(-12px); } }
-    .pin-bounce-delay { animation-delay: 0.2s; }
-    .pin-bounce-delay2 { animation-delay: 0.4s; }
+    /* ===== Mobile ===== */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .mobile-header { display: flex; }
+      .main-content { margin-left: 0; padding: 1rem; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .stat-cards { grid-template-columns: repeat(2, 1fr); }
+      .page-header { flex-direction: column; align-items: flex-start; }
+      .page-header h1 { font-size: 1.3rem; }
+      .challenge-cards { grid-template-columns: 1fr; }
+      .honor-badges { grid-template-columns: repeat(2, 1fr); }
+      .data-table { font-size: .8rem; }
+      .data-table th, .data-table td { padding: .5rem; }
+      .filter-row { flex-direction: column; }
+    }
+    @media (max-width: 480px) {
+      .stat-cards { grid-template-columns: 1fr 1fr; }
+      .stat-value { font-size: 1.5rem; }
+    }
   </style>
 </head>
-<body class="bg-bowl-navy text-white min-h-screen">
-
-  <!-- App Shell -->
-  <div id="app" class="flex flex-col md:flex-row min-h-screen">
-
-    <!-- Sidebar (Desktop) -->
-    <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-bowl-dark border-r border-bowl-border fixed h-full z-30">
-      <div class="p-6 border-b border-bowl-border">
-        <h1 class="text-2xl font-bold flex items-center gap-2">
-          🎳 <span class="text-bowl-red">Bowling</span> Hub
-        </h1>
-        <p class="text-bowl-muted text-sm mt-1">Your Bowling Companion</p>
-      </div>
-      <nav class="flex-1 p-4 space-y-1" id="sidebar-nav">
-        <a href="#dashboard" class="nav-item sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="dashboard">
-          <i class="fa-solid fa-gauge w-5 text-center"></i> Dashboard
-        </a>
-        <a href="#scores" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="scores">
-          <i class="fa-solid fa-list-ol w-5 text-center"></i> My Scores
-        </a>
-        <a href="#honors" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="honors">
-          <i class="fa-solid fa-trophy w-5 text-center"></i> Honor Scores
-        </a>
-        <a href="#leagues" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="leagues">
-          <i class="fa-solid fa-users w-5 text-center"></i> My Leagues
-        </a>
-        <a href="#schedule" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="schedule">
-          <i class="fa-solid fa-calendar-days w-5 text-center"></i> Schedule
-        </a>
-        <a href="#challenges" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="challenges">
-          <i class="fa-solid fa-bolt w-5 text-center"></i> Challenges
-        </a>
-        <a href="#settings" class="nav-item sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-bowl-navy/50" data-view="settings">
-          <i class="fa-solid fa-gear w-5 text-center"></i> Settings
-        </a>
-      </nav>
-      <div class="p-4 border-t border-bowl-border">
-        <div id="sidebar-profile" class="flex items-center gap-3 px-2">
-          <div class="w-9 h-9 rounded-full bg-bowl-red flex items-center justify-center font-bold text-sm">?</div>
-          <div>
-            <p class="text-sm font-medium" id="sidebar-name">Not Set Up</p>
-            <p class="text-xs text-bowl-muted" id="sidebar-usbc">USBC: —</p>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main id="main-content" class="flex-1 md:ml-64 pb-20 md:pb-0">
-      <!-- Top bar mobile -->
-      <header class="md:hidden sticky top-0 z-20 bg-bowl-dark/95 backdrop-blur border-b border-bowl-border px-4 py-3 flex items-center justify-between">
-        <h1 class="text-lg font-bold flex items-center gap-2">🎳 <span class="text-bowl-red">Bowling</span> Hub</h1>
-        <div id="header-avatar" class="w-8 h-8 rounded-full bg-bowl-red flex items-center justify-center font-bold text-xs cursor-pointer" data-view="settings">?</div>
-      </header>
-
-      <!-- View Container -->
-      <div id="view-container" class="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto">
-        <!-- Views are rendered here by JS -->
-      </div>
-    </main>
-
-    <!-- Bottom Nav (Mobile) -->
-    <nav id="bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-bowl-dark/95 backdrop-blur border-t border-bowl-border z-30">
-      <div class="flex justify-around items-center py-2">
-        <a href="#dashboard" class="nav-item bottom-link active flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="dashboard">
-          <i class="fa-solid fa-gauge text-lg"></i>
-          <span>Home</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-        <a href="#scores" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="scores">
-          <i class="fa-solid fa-list-ol text-lg"></i>
-          <span>Scores</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-        <a href="#honors" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="honors">
-          <i class="fa-solid fa-trophy text-lg"></i>
-          <span>Honors</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-        <a href="#leagues" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="leagues">
-          <i class="fa-solid fa-users text-lg"></i>
-          <span>Leagues</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-        <a href="#schedule" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="schedule">
-          <i class="fa-solid fa-calendar-days text-lg"></i>
-          <span>Schedule</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-        <a href="#challenges" class="nav-item bottom-link flex flex-col items-center gap-0.5 px-3 py-1 text-xs" data-view="challenges">
-          <i class="fa-solid fa-bolt text-lg"></i>
-          <span>Challenges</span>
-          <div class="nav-indicator h-0.5 bg-bowl-red rounded w-0"></div>
-        </a>
-      </div>
-    </nav>
-  </div>
-
-  <!-- Modal Container -->
-  <div id="modal-container" class="hidden fixed inset-0 z-50"></div>
+<body>
 
   <!-- Toast Container -->
-  <div id="toast-container" class="fixed bottom-24 md:bottom-6 right-4 z-50 flex flex-col gap-2"></div>
+  <div class="toast-container" id="toast-container"></div>
 
-  <!-- Load App -->
-  <script type="module" src="js/app.js"></script>
+  <!-- Auth Modal -->
+  <div class="auth-modal" id="auth-modal">
+    <div class="auth-box">
+      <h2>🎳 Bowling Hub</h2>
+      <p class="auth-subtitle">Track scores, join leagues, challenge friends</p>
+
+      <div id="login-form">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="Your password">
+        </div>
+        <button class="btn btn-primary" id="btn-login">Log In</button>
+        <p class="toggle-link">Don't have an account? <a href="#" id="toggle-signup">Sign Up</a></p>
+      </div>
+
+      <div id="signup-form" style="display:none;">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="signup-name" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="6+ characters">
+        </div>
+        <button class="btn btn-primary" id="btn-signup">Create Account</button>
+        <p class="toggle-link">Already have an account? <a href="#" id="toggle-login">Log In</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Container -->
+  <div id="app-container">
+
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+      <button id="sidebar-toggle">☰</button>
+      <span class="brand-text">🎳 Bowling Hub</span>
+    </div>
+
+    <!-- Sidebar Overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <span>🎳</span> Bowling Hub
+      </div>
+      <div class="sidebar-nav">
+        <div class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon">📊</span> Dashboard
+        </div>
+        <div class="nav-item" data-tab="scores">
+          <span class="nav-icon">🎳</span> My Scores
+        </div>
+        <div class="nav-item" data-tab="honors">
+          <span class="nav-icon">🏆</span> Honor Roll
+        </div>
+        <div class="nav-item" data-tab="leagues">
+          <span class="nav-icon">🏟️</span> My Leagues
+        </div>
+        <div class="nav-item" data-tab="schedule">
+          <span class="nav-icon">📅</span> Schedule
+        </div>
+        <div class="nav-item" data-tab="challenges">
+          <span class="nav-icon">⚔️</span> Challenges
+        </div>
+        <div class="nav-item" data-tab="settings">
+          <span class="nav-icon">⚙️</span> Settings
+        </div>
+      </div>
+      <div class="sidebar-user">
+        <div class="user-avatar" id="sidebar-user-avatar">B</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-user-name">Bowler</div>
+          <div class="user-role">Bowler</div>
+        </div>
+        <button id="logout-btn" title="Logout">🚪</button>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="tab-content active" id="tab-dashboard"></div>
+      <div class="tab-content" id="tab-scores"></div>
+      <div class="tab-content" id="tab-honors"></div>
+      <div class="tab-content" id="tab-leagues"></div>
+      <div class="tab-content" id="tab-schedule"></div>
+      <div class="tab-content" id="tab-challenges"></div>
+      <div class="tab-content" id="tab-settings"></div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script>
+    /* ===== Utility Functions (global) ===== */
+    function escHtml(str) {
+      if (!str) return '';
+      const d = document.createElement('div');
+      d.textContent = String(str);
+      return d.innerHTML;
+    }
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    /* ===== Toast System ===== */
+    const Toast = {
+      show(msg, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = msg;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(() => toast.remove(), 300); }, 3500);
+      }
+    };
+  </script>
+  <script src="js/auth.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/scores.js"></script>
+  <script src="js/honors.js"></script>
+  <script src="js/leagues.js"></script>
+  <script src="js/schedule.js"></script>
+  <script src="js/challenges.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    /* ===== Boot ===== */
+    document.addEventListener('DOMContentLoaded', () => {
+      Auth.bindEvents();
+      Auth.init();
+      // App.init is called after auth succeeds (showApp triggers it via observer)
+      const observer = new MutationObserver(() => {
+        if (document.getElementById('app-container').style.display === 'flex') {
+          App.init();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('app-container'), { attributes: true, attributeFilter: ['style'] });
+    });
+  </script>
 </body>
 </html>

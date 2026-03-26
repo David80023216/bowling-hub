@@ -1,155 +1,169 @@
-/**
- * schedule.js — Schedule view for Bowling Hub
- */
+/* Schedule module – upcoming matches & calendar */
 
-import * as Storage from './storage.js';
-import { showModal, closeModal, showToast, formatDate, formatDateShort, todayString, formField, inputClass, selectClass, btnPrimary } from './app.js';
+const Schedule = (() => {
 
-export function renderSchedule(container) {
-  const schedule = Storage.getSchedule();
-  const leagues = Storage.getLeagues();
-  const today = todayString();
+  async function load() {
+    const container = document.getElementById('tab-schedule');
+    const user = Auth.getUser();
+    if (!user) return;
 
-  // Separate upcoming and past
-  const upcoming = schedule.filter(m => m.date >= today);
-  const past = schedule.filter(m => m.date < today);
+    container.innerHTML = '<div class="card"><div class="skeleton skeleton-block"></div></div>';
 
-  // Find "this week" matches (within 7 days)
-  const weekFromNow = new Date();
-  weekFromNow.setDate(weekFromNow.getDate() + 7);
-  const weekStr = weekFromNow.toISOString().split('T')[0];
-  const thisWeek = upcoming.filter(m => m.date <= weekStr);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
 
-  container.innerHTML = `
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-calendar-days text-bowl-amber"></i> Schedule</h2>
-        <p class="text-bowl-muted text-sm">Your upcoming matches and events</p>
+      const [upcomingRes, pastRes, leaguesRes] = await Promise.all([
+        sb.from('schedules').select('*, league:leagues(name)').eq('user_id', user.id)
+          .gte('match_date', today).order('match_date', { ascending: true }),
+        sb.from('schedules').select('*, league:leagues(name)').eq('user_id', user.id)
+          .lt('match_date', today).order('match_date', { ascending: false }).limit(20),
+        sb.from('user_leagues').select('league:leagues(id, name)').eq('user_id', user.id)
+      ]);
+
+      const upcoming = upcomingRes.data || [];
+      const past = pastRes.data || [];
+      const leagues = (leaguesRes.data || []).map(ul => ul.league).filter(Boolean);
+
+      render(container, upcoming, past, leagues, user);
+    } catch (err) {
+      console.error('Schedule load error:', err);
+      Toast.show('Error loading schedule', 'error');
+    }
+  }
+
+  function render(container, upcoming, past, leagues, user) {
+    // Next week matches
+    const today = new Date();
+    const nextWeekEnd = new Date(today);
+    nextWeekEnd.setDate(today.getDate() + 7);
+    const nextWeek = upcoming.filter(m => new Date(m.match_date) <= nextWeekEnd);
+    const later = upcoming.filter(m => new Date(m.match_date) > nextWeekEnd);
+
+    const leagueOpts = leagues.map(l => `<option value="${l.id}">${escHtml(l.name)}</option>`).join('');
+
+    container.innerHTML = `
+      <div class="page-header">
+        <h1>📅 Schedule</h1>
+        <button class="btn btn-primary" onclick="Schedule.showAddForm()">+ Add Match</button>
       </div>
-      ${btnPrimary('Add Match', 'btn-add-match', 'fa-plus')}
-    </div>
 
-    ${thisWeek.length > 0 ? `
-      <div class="mb-6">
-        <h3 class="font-bold text-bowl-amber mb-3 flex items-center gap-2"><i class="fa-solid fa-star"></i> This Week</h3>
-        <div class="space-y-2">
-          ${thisWeek.map(m => renderMatchCard(m, leagues, true)).join('')}
+      <div id="schedule-add-form" class="card form-card" style="display:none;">
+        <h3>Add Match</h3>
+        <div class="form-grid">
+          <div class="form-group"><label>League</label><select id="sched-league"><option value="">Select League</option>${leagueOpts}</select></div>
+          <div class="form-group"><label>Date</label><input type="date" id="sched-date"></div>
+          <div class="form-group"><label>Time</label><input type="time" id="sched-time" value="19:00"></div>
+          <div class="form-group"><label>Opponent</label><input type="text" id="sched-opponent" placeholder="Team name"></div>
+          <div class="form-group"><label>Lanes</label><input type="text" id="sched-lanes" placeholder="e.g. 5-6"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="Schedule.addMatch()">Add</button>
+          <button class="btn btn-secondary" onclick="Schedule.hideAddForm()">Cancel</button>
         </div>
       </div>
-    ` : ''}
 
-    ${upcoming.length > 0 ? `
-      <div class="mb-6">
-        <h3 class="font-bold text-bowl-muted mb-3">Upcoming</h3>
-        <div class="space-y-2">
-          ${upcoming.filter(m => !thisWeek.includes(m)).map(m => renderMatchCard(m, leagues, false)).join('')}
-        </div>
-      </div>
-    ` : ''}
-
-    ${upcoming.length === 0 && thisWeek.length === 0 ? `
-      <div class="text-center py-16 text-bowl-muted">
-        <i class="fa-solid fa-calendar-xmark text-5xl mb-4 opacity-50"></i>
-        <p class="text-lg">No upcoming matches</p>
-        <p class="text-sm">Add your next match to stay on track!</p>
-      </div>
-    ` : ''}
-
-    ${past.length > 0 ? `
-      <div>
-        <h3 class="font-bold text-bowl-muted mb-3">Past Matches</h3>
-        <div class="space-y-2">
-          ${past.reverse().map(m => renderMatchCard(m, leagues, false, true)).join('')}
-        </div>
-      </div>
-    ` : ''}
-  `;
-
-  document.getElementById('btn-add-match').addEventListener('click', () => openAddMatchModal(leagues));
-
-  // Delete handlers
-  document.querySelectorAll('.btn-delete-match').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (confirm('Remove this match?')) {
-        Storage.deleteMatch(btn.dataset.id);
-        showToast('Match removed', 'info');
-        renderSchedule(container);
-      }
-    });
-  });
-}
-
-function renderMatchCard(match, leagues, isThisWeek, isPast = false) {
-  const league = leagues.find(l => l.id === match.leagueId);
-  const leagueName = league ? league.name : (match.leagueName || 'Match');
-
-  return `
-    <div class="bg-bowl-dark border ${isThisWeek ? 'border-bowl-amber glow-amber' : 'border-bowl-border'} ${isPast ? 'opacity-60' : ''} rounded-xl p-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="text-center min-w-[50px]">
-          <p class="text-2xl font-bold ${isThisWeek ? 'text-bowl-amber' : 'text-white'}">${new Date(match.date + 'T00:00:00').getDate()}</p>
-          <p class="text-xs text-bowl-muted uppercase">${new Date(match.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' })}</p>
-        </div>
-        <div class="border-l border-bowl-border pl-3">
-          <p class="font-medium">${leagueName}</p>
-          <p class="text-sm text-bowl-muted">vs ${match.opponent || 'TBD'}</p>
-          <div class="flex gap-3 mt-1 text-xs text-bowl-muted">
-            ${match.time ? `<span><i class="fa-solid fa-clock mr-1"></i>${match.time}</span>` : ''}
-            ${match.lanes ? `<span><i class="fa-solid fa-location-dot mr-1"></i>Lanes ${match.lanes}</span>` : ''}
-            ${match.weekNumber ? `<span>Week ${match.weekNumber}</span>` : ''}
+      ${nextWeek.length > 0 ? `
+        <div class="card highlight-card">
+          <h3>🔥 This Week</h3>
+          <div class="schedule-list">
+            ${nextWeek.map(m => renderMatchItem(m, true)).join('')}
           </div>
         </div>
-      </div>
-      <button class="btn-delete-match text-gray-500 hover:text-red-400 transition-colors" data-id="${match.id}">
-        <i class="fa-solid fa-trash-can"></i>
-      </button>
-    </div>
-  `;
-}
+      ` : '<div class="card"><h3>🔥 This Week</h3><p class="empty-state">No matches this week.</p></div>'}
 
-function openAddMatchModal(leagues) {
-  showModal('📅 Add Match', (body) => {
-    body.innerHTML = `
-      <div class="space-y-4">
-        ${formField('League', `
-          <select id="match-league" class="${selectClass()}">
-            <option value="">Select League</option>
-            ${leagues.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
-          </select>
-        `, 'match-league')}
+      ${later.length > 0 ? `
+        <div class="card">
+          <h3>📋 Upcoming</h3>
+          <div class="schedule-list">
+            ${later.map(m => renderMatchItem(m, false)).join('')}
+          </div>
+        </div>
+      ` : ''}
 
-        ${formField('Date *', `<input type="date" id="match-date" value="${todayString()}" class="${inputClass()}" />`, 'match-date')}
-        ${formField('Time', `<input type="time" id="match-time" class="${inputClass()}" />`, 'match-time')}
-        ${formField('Opponent Team', `<input type="text" id="match-opponent" placeholder="Pin Busters" class="${inputClass()}" />`, 'match-opponent')}
-        ${formField('Lanes', `<input type="text" id="match-lanes" placeholder="e.g., 25-26" class="${inputClass()}" />`, 'match-lanes')}
-        ${formField('Week Number', `<input type="number" id="match-week" min="1" max="52" placeholder="12" class="${inputClass()}" />`, 'match-week')}
+      ${past.length > 0 ? `
+        <div class="card">
+          <h3>📜 Past Matches</h3>
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>League</th><th>Opponent</th><th>Lanes</th><th>Result</th></tr></thead>
+            <tbody>${past.map(m => `
+              <tr>
+                <td>${formatDate(m.match_date)}</td>
+                <td>${escHtml(m.league?.name || '')}</td>
+                <td>${escHtml(m.opponent || 'TBD')}</td>
+                <td>${escHtml(m.lanes || '')}</td>
+                <td>${m.result ? escHtml(m.result) : '<span class="text-muted">-</span>'}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table>
+        </div>
+      ` : ''}
+    `;
+  }
 
-        <button id="match-save" class="w-full bg-bowl-red hover:bg-red-600 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-          <i class="fa-solid fa-check"></i> Add Match
-        </button>
+  function renderMatchItem(m, isThisWeek) {
+    const d = new Date(m.match_date + 'T00:00:00');
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+    return `
+      <div class="schedule-item ${isThisWeek ? 'this-week' : ''}">
+        <div class="schedule-date-block">
+          <div class="schedule-day">${dayName}</div>
+          <div class="schedule-date">${formatDate(m.match_date)}</div>
+          ${m.match_time ? `<div class="schedule-time">${m.match_time}</div>` : ''}
+        </div>
+        <div class="schedule-details">
+          <div class="schedule-league">${escHtml(m.league?.name || 'League')}</div>
+          <div class="schedule-opponent">vs ${escHtml(m.opponent || 'TBD')}</div>
+          ${m.lanes ? `<div class="schedule-lanes">Lanes ${escHtml(m.lanes)}</div>` : ''}
+        </div>
+        <button class="btn-icon" onclick="Schedule.deleteMatch('${m.id}')" title="Delete">🗑️</button>
       </div>
     `;
+  }
 
-    body.querySelector('#match-save').addEventListener('click', () => {
-      const date = body.querySelector('#match-date').value;
-      if (!date) {
-        showToast('Please select a date', 'error');
-        return;
-      }
+  function showAddForm() { document.getElementById('schedule-add-form').style.display = 'block'; }
+  function hideAddForm() { document.getElementById('schedule-add-form').style.display = 'none'; }
 
-      const match = {
-        leagueId: body.querySelector('#match-league').value || null,
-        date,
-        time: body.querySelector('#match-time').value,
-        opponent: body.querySelector('#match-opponent').value.trim(),
-        lanes: body.querySelector('#match-lanes').value.trim(),
-        weekNumber: body.querySelector('#match-week').value ? Number(body.querySelector('#match-week').value) : null,
-      };
+  async function addMatch() {
+    const user = Auth.getUser();
+    if (!user) return;
 
-      Storage.saveMatch(match);
-      closeModal();
-      showToast('Match added! 📅', 'success');
-      renderSchedule(document.getElementById('view-container'));
-    });
-  });
-}
+    const leagueId = document.getElementById('sched-league').value || null;
+    const date = document.getElementById('sched-date').value;
+    const time = document.getElementById('sched-time').value;
+    const opponent = document.getElementById('sched-opponent').value.trim();
+    const lanes = document.getElementById('sched-lanes').value.trim();
+
+    if (!date) return Toast.show('Select a date', 'error');
+
+    try {
+      const { error } = await sb.from('schedules').insert({
+        user_id: user.id,
+        league_id: leagueId,
+        match_date: date,
+        match_time: time || null,
+        opponent: opponent || null,
+        lanes: lanes || null
+      });
+      if (error) throw error;
+      Toast.show('Match added!', 'success');
+      hideAddForm();
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
+
+  async function deleteMatch(id) {
+    if (!confirm('Delete this match?')) return;
+    try {
+      const { error } = await sb.from('schedules').delete().eq('id', id);
+      if (error) throw error;
+      Toast.show('Match removed', 'success');
+      load();
+    } catch (err) {
+      Toast.show(err.message, 'error');
+    }
+  }
+
+  return { load, showAddForm, hideAddForm, addMatch, deleteMatch };
+})();
